@@ -1,0 +1,16 @@
+# Core dependencies for Shein Product Scraper application
+selenium
+webdriver_manager
+flask
+
+# Optional dependencies for database operations
+# Uncomment if needed for ORM/database helpers
+flask_sqlalchemy
+
+# Future/Advanced features (commented out)
+# celery
+# redis
+
+# Notes:
+# - sqlite3 is part of the Python standard library; no need to list it here
+# - Add any additional libraries as project evolves

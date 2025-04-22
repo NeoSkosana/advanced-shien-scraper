@@ -1,4 +1,3 @@
-# Advanced Shein Scraper - Initial Implementation
 import os
 import threading
 import time
@@ -11,21 +10,20 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 # --- Free Proxy List Providers (Suggesting some robust free sources for rotation) ---
 FREE_PROXY_ENDPOINTS = [
-    # Note: For reliability, these must be parsed to extract current IP:PORT lists at runtime.
     "https://www.proxy-list.download/api/v1/get?type=https",
     "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
     "https://www.proxyscan.io/download?type=https",
-    # Add more as needed
 ]
-# In production, periodically validate proxies for uptime before using!
 
-# --- Flask App Initialization ---
+
 app = Flask(__name__)
 SCRAPER_STATUS = {
-    "status": "Idle",  # Possible: Idle, Processing, Attempting Bypass, Blocked, Completed, Error
+    "status": "Idle", 
     "current_category": '',
     "product_links_found": 0,
     "products_scraped": 0,
@@ -34,10 +32,8 @@ SCRAPER_STATUS = {
     "message": '',
 }
 SCRAPER_RESULTS = []
-
 DB_PATH = "shein_scraper.db"
 
-# --- SQLite Setup ---
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -48,20 +44,17 @@ def init_db():
         color TEXT,
         size TEXT,
         description TEXT,
-        images TEXT  -- comma-separated URLs
+        images TEXT
     )''')
     conn.commit()
     conn.close()
 
 init_db()
 
-# --- Utility Functions ---
 def random_human_delay(a=1.5, b=4.5):
-    """Adds a random delay to mimic more human-like behavior."""
     time.sleep(random.uniform(a, b))
 
 def fetch_free_proxies():
-    """Fetch free proxies from provided endpoints and combine list."""
     import requests
     proxies = []
     for url in FREE_PROXY_ENDPOINTS:
@@ -79,12 +72,10 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-# --- Selenium Setup ---
 def get_selenium_driver(proxy=None, headless=True):
     options = Options()
     if headless:
         options.add_argument("--headless=new")
-    # Basic stealth measures
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--disable-gpu")
     options.add_argument("--disable-extensions")
@@ -98,28 +89,29 @@ def get_selenium_driver(proxy=None, headless=True):
     driver.set_window_size(random.randint(1280, 1920), random.randint(800, 1080))
     return driver
 
-# --- Scraping Logic ---
-
+# --- UPDATED XPATHS ---
+# Using all XPaths and notes provided by user
 XPATHS = {
-    "product_link": "placeholder",
+    "product_link": "placeholder",  # These actual links should be collected from category/PLP page, not from product page
     "pagination_next": "//span[@aria-label='Page Next']",
     "pagination_numbers": "//div[contains(@class, 'sui-pagination__center')]//span[contains(@class, 'sui-pagination__inner')]",
     "product_images": "//div[@class = 'product-intro']//img[@class = 'lazyload crop-image-container__img']",
-    "product_title": "placeholder",
-    "product_price": "placeholder",
-    "product_color": "placeholder",
-    "product_size": "placeholder",
-    "product_description": "placeholder",
+    "product_title": "//div[@class = 'product-intro']//h1[contains(@class, 'product-intro__head-name')]",
+    "product_price_1": "//div[@class = 'product-intro']//div[contains(@class, 'from original')]",
+    "product_price_2": "//div[@class = 'product-intro']//p[contains(@class, 'product-intro__ssr-priceDel')]",
+    "product_price_3": "//div[@class = 'product-intro']//div[contains(@class, 'from original')]/span",
+    "product_color": "//div[@class = 'goods-color__radio-container']//div[contains(@class, 'goods-color__radio_block')]",
+    "product_size": "//div[@class = 'product-intro__size']//p[contains(@class, 'product-intro__sizes-item-text--one')]",
+    "product_description_btn": "//div[@class = 'product-intro__description']//span[contains(@class, 'head-icon')]",
+    "product_description": "//div[@class = 'product-intro__description-table']//div[contains(@class, 'product-intro__description-table-item')]",
 }
 
 def is_captcha_page(driver):
-    """Detects CAPTCHA or bot challenges. User can refine this detection."""
     text = driver.page_source.lower()
     suspects = ['captcha', 'bot detection', 'verify', '/captcha/', '/challenge/']
     return any(word in text for word in suspects)
 
 def try_bypass_human(driver):
-    # Simulate random scroll, waits, mouse movement
     try:
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         random_human_delay(1, 3)
@@ -128,33 +120,97 @@ def try_bypass_human(driver):
     except Exception:
         pass
 
+def wait_for_any(driver, by, selector, timeout=15, visible=False, many=False):
+    """Helper function to wait for elements with proper error handling"""
+    wait = WebDriverWait(driver, timeout)
+    try:
+        if many:
+            if visible:
+                return wait.until(EC.visibility_of_any_elements_located((by, selector)))
+            return wait.until(EC.presence_of_all_elements_located((by, selector)))
+        else:
+            if visible:
+                return wait.until(EC.visibility_of_element_located((by, selector)))
+            return wait.until(EC.presence_of_element_located((by, selector)))
+    except Exception:
+        # Return empty list or None if timeout
+        return [] if many else None
+
 def parse_products_on_page(driver):
-    # Placeholder, needs accurate XPATHS
-    elems = driver.find_elements(By.XPATH, XPATHS["product_link"])
+    # Wait for product links to load before attempting to extract them
+    elems = wait_for_any(driver, By.XPATH, XPATHS["product_link"], timeout=15, many=True)
+    # Note: The user says these are gathered from the listing/category page, not the product page
     links = [elem.get_attribute("href") for elem in elems if elem]
     return list(set(links))
 
 def extract_product_data(driver):
-    # Replace with real XPATH queries
-    def get(xpath):
-        try:
-            elem = driver.find_element(By.XPATH, xpath)
-            return elem.text if elem else ''
-        except:
-            return ''
-    def get_list(xpath):
-        try:
-            elems = driver.find_elements(By.XPATH, xpath)
-            return [e.get_attribute("src") or e.text for e in elems if e]
-        except:
-            return []
-    images = get_list(XPATHS["product_images"])
+    # -- Helper functions with explicit waits --
+    def get(xpath, timeout=7, visible=False):
+        elem = wait_for_any(driver, By.XPATH, xpath, timeout=timeout, visible=visible)
+        if elem:
+            return elem.text
+        return ''
+    
+    def get_list(xpath, attrib=None, timeout=7, visible=False):
+        elems = wait_for_any(driver, By.XPATH, xpath, timeout=timeout, visible=visible, many=True)
+        arr = []
+        for e in elems:
+            if attrib:
+                arr.append(e.get_attribute(attrib))
+            elif e.text:
+                arr.append(e.text)
+        return arr
+
+    # Click to expand the description if possible, so description is available for scraping
+    try:
+        desc_btn = wait_for_any(driver, By.XPATH, XPATHS["product_description_btn"], timeout=7, visible=True)
+        if desc_btn and desc_btn.is_displayed():
+            # Scroll to description button before clicking to ensure it's in view
+            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", desc_btn)
+            random_human_delay(0.3, 0.7)
+            desc_btn.click()
+            random_human_delay(0.5, 1.2)
+    except Exception:
+        pass
+
+    # Wait for images to be visible before extracting
+    images = get_list(XPATHS["product_images"], attrib="src", timeout=8, visible=True)
+
+    # Multiple price possibilities, use all non-empty
+    prices = []
+    for k in ("product_price_1", "product_price_2", "product_price_3"):
+        p = get(XPATHS[k])
+        if p:
+            prices.append(p)
+    # If all price fields are empty, fallback to empty
+    price = "; ".join(prices) if prices else ""
+
+    # Colors
+    color_list = get_list(XPATHS["product_color"])
+    size_list = get_list(XPATHS["product_size"])
+
+    # --- Product Description extraction as key/value pairs ---
+    # Each item should have class "key" for the label and class "val" for value.
+    descriptions = []
+    try:
+        # Wait for description items to be present after clicking the expand button
+        desc_items = wait_for_any(driver, By.XPATH, XPATHS["product_description"], timeout=9, many=True)
+        for item in desc_items:
+            key_els = item.find_elements(By.CLASS_NAME, "key")
+            val_els = item.find_elements(By.CLASS_NAME, "val")
+            key = key_els[0].text.strip() if key_els else ''
+            val = val_els[0].text.strip() if val_els else ''
+            if key or val:
+                descriptions.append({"key": key, "value": val})
+    except Exception:
+        pass
+
     return {
         "title": get(XPATHS["product_title"]),
-        "price": get(XPATHS["product_price"]),
-        "color": get(XPATHS["product_color"]),
-        "size": get(XPATHS["product_size"]),
-        "description": get(XPATHS["product_description"]),
+        "price": price,
+        "color": color_list,
+        "size": size_list,
+        "description": descriptions,  # now a list of key-value dicts
         "images": images,
     }
 
@@ -166,8 +222,15 @@ def save_product_row(product_url, data):
             '''INSERT OR REPLACE INTO products
             (product_url, title, price, color, size, description, images)
             VALUES (?, ?, ?, ?, ?, ?, ?)''',
-            (product_url, data['title'], data['price'], data['color'],
-                data['size'], data['description'], ','.join(data['images']))
+            (
+                product_url, 
+                data['title'], 
+                data['price'], 
+                ','.join(data['color']) if isinstance(data['color'], list) else data['color'],
+                ','.join(data['size']) if isinstance(data['size'], list) else data['size'],
+                str(data['description']),  # Actually JSON list of dicts
+                ','.join(data['images']) if isinstance(data['images'], list) else data['images']
+            )
         )
         conn.commit()
     except Exception:
@@ -181,6 +244,8 @@ def scrape_category(category_url, driver):
     while True:
         SCRAPER_STATUS['message'] = f"Scraping page {page} of category"
         driver.get(category_url)
+        # Wait for product links to load before proceeding
+        wait_for_any(driver, By.XPATH, XPATHS["product_link"], timeout=20, many=True)
         random_human_delay(2, 4)
         try_bypass_human(driver)
         if is_captcha_page(driver):
@@ -194,10 +259,13 @@ def scrape_category(category_url, driver):
         for link in links:
             product_links.add(link)
         SCRAPER_STATUS['product_links_found'] = len(product_links)
-        # Try next page navigation (placeholder: real implementation must replace below)
         try:
-            next_btn = driver.find_element(By.XPATH, XPATHS["pagination_next"])
+            # Wait for next pagination button with explicit wait
+            next_btn = wait_for_any(driver, By.XPATH, XPATHS["pagination_next"], timeout=10, visible=True)
             if next_btn and next_btn.is_displayed():
+                # Scroll to pagination button before clicking
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center', inline: 'center'});", next_btn)
+                random_human_delay(0.3, 0.7)
                 next_btn.click()
             else:
                 break
@@ -208,10 +276,13 @@ def scrape_category(category_url, driver):
     return product_links
 
 def scrape_products(product_links, driver):
+    import json
     SCRAPER_RESULTS.clear()
     count = 0
     for url in product_links:
         driver.get(url)
+        # Wait for product title to appear as indicator that page has loaded
+        wait_for_any(driver, By.XPATH, XPATHS["product_title"], timeout=15)
         random_human_delay(1, 3)
         try_bypass_human(driver)
         if is_captcha_page(driver):
@@ -223,8 +294,11 @@ def scrape_products(product_links, driver):
             break
         data = extract_product_data(driver)
         data['product_url'] = url
+        # Save as JSON in DB for the "description" (list of key/vals)
+        data_save = data.copy()
+        data_save['description'] = json.dumps(data['description'])
         SCRAPER_RESULTS.append(data)
-        save_product_row(url, data)
+        save_product_row(url, data_save)
         count += 1
         SCRAPER_STATUS['products_scraped'] = count
     return SCRAPER_RESULTS
@@ -251,7 +325,7 @@ def scraper_job(category_urls, use_proxies=True):
                     break
                 scrape_products(product_links, driver)
                 driver.quit()
-                break  # category done
+                break
             except Exception as e:
                 SCRAPER_STATUS['status'] = 'Error'
                 SCRAPER_STATUS['error'] = f"Error: {str(e)}"
@@ -263,7 +337,7 @@ def scraper_job(category_urls, use_proxies=True):
     SCRAPER_STATUS['status'] = "Completed" if not SCRAPER_STATUS['captcha_detected'] else "Blocked"
     SCRAPER_STATUS['message'] = "Scraping Finished" if not SCRAPER_STATUS['captcha_detected'] else SCRAPER_STATUS['error']
 
-# --- Flask Routes ---
+# --- Flask Routes (unchanged) ---
 
 MINIMAL_TEMPLATE = """
 <!DOCTYPE html>
@@ -300,9 +374,9 @@ function getDataView() {
             html += '<tr>'
                 + `<td>${row.title}</td>`
                 + `<td>${row.price}</td>`
-                + `<td>${row.color}</td>`
-                + `<td>${row.size}</td>`
-                + `<td>${row.description}</td>`
+                + `<td>${Array.isArray(row.color) ? row.color.join(", ") : row.color}</td>`
+                + `<td>${Array.isArray(row.size) ? row.size.join(", ") : row.size}</td>`
+                + `<td>${Array.isArray(row.description) ? row.description.map(x => x.key + ": " + x.value).join("<br>") : row.description}</td>`
                 + `<td>${(row.images || '').split(',').map(u=>"<a href='"+u+"' target='_blank'>img</a>").join(' ')}</td>`
                 + `<td><a href="${row.product_url}" target="_blank">Link</a></td>`
                 + '</tr>';
@@ -360,24 +434,38 @@ def data_view():
     conn = get_db_connection()
     rows = conn.execute("SELECT * FROM products").fetchall()
     conn.close()
-    # for UI display
-    records = [dict(row) for row in rows]
+    import json
+    records = []
+    for row in rows:
+        rec = dict(row)
+        try:
+            # Display decoded list for description
+            rec["description"] = json.loads(rec["description"])
+        except Exception:
+            pass
+        records.append(rec)
     return jsonify(records)
 
 @app.route('/export')
 def export_data():
-    # Export DB as CSV and serve as file download
     conn = get_db_connection()
     rows = conn.execute("SELECT * FROM products").fetchall()
     conn.close()
     fp = "shein_scraped_data.csv"
+    import json
     with open(fp, "w", newline="", encoding="utf8") as f:
         w = csv.writer(f)
         w.writerow(['title', 'price', 'color', 'size', 'description', 'images', 'product_url'])
         for row in rows:
+            # For description, flatten JSON into key:value; for color/size/images, use as string
+            try:
+                description = json.loads(row["description"])
+                description_str = "; ".join([f"{d['key']}: {d['value']}" for d in description])
+            except Exception:
+                description_str = row["description"]
             w.writerow([
                 row["title"], row["price"], row["color"], row["size"],
-                row["description"], row["images"], row["product_url"]
+                description_str, row["images"], row["product_url"]
             ])
     return send_file(fp, as_attachment=True)
 
