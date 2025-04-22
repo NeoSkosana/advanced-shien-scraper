@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Shein Scraper Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Modernizable CSS for dashboard UI -->
+    <style>
+        :root {
+            --primary: #5145cd;
+            --accent: #28c76f;
+            --danger: #ea5455;
+            --header-bg: #282a36;
+            --card-bg: #fff;
+            --text-main: #222;
+            --gray-bg: #f7f7fb;
+        }
+        body {
+            background: var(--gray-bg);
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            color: var(--text-main);
+        }
+        .header {
+            background: var(--primary);
+            color: #fff;
+            padding: 2rem 2rem 1rem 2rem;
+        }
+        .header h1 { margin: 0 0 0.1em 0; font-size: 2.1em; }
+        .stat-cards {
+            display: flex;
+            gap: 2em;
+            margin: 1.2em 0;
+        }
+        .card {
+            background: var(--card-bg);
+            box-shadow: 0 2px 10px #0001;
+            border-radius: 10px;
+            flex: 1;
+            padding: 1em;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .card-main {
+            font-size: 2em;
+            margin-bottom: 0.3em;
+        }
+        .card-label {
+            color: #666;
+            letter-spacing: 0.1em;
+            font-size: 0.96em;
+        }
+        .main-container {
+            max-width: 1100px;
+            margin: auto;
+            background: var(--card-bg);
+            box-shadow: 0 8px 38px #5145cd10;
+            border-radius: 18px;
+            padding: 2rem 2.5rem 3rem 2.5rem;
+            margin-top: -2.5rem;
+        }
+        .input-section label {
+            font-weight: 600;
+            font-size: 1.03em;
+        }
+        textarea {
+            width: 100%;
+            min-height: 80px;
+            resize: vertical;
+            font-size: 1.05em;
+            border-radius: 5px;
+            border: 1.5px solid #dedede;
+            padding: 0.7em 1em;
+            font-family: inherit;
+            background: #fafaff;
+        }
+        .actions {
+            margin: 1em 0 0 0;
+            display: flex;
+            gap: 0.9em;
+        }
+        button, .export-btn {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 0.7em 1.8em;
+            font-size: 1.03em;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        button:hover, .export-btn:hover {background: var(--accent);}
+        .status-wrap {
+            margin: 2em 0 0 0;
+        }
+        .status-label {
+            font-weight: 700;
+            font-size: 1.07em;
+            margin-right: 0.5em;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 11px; height: 11px;
+            border-radius: 50%;
+            margin: 0 0.4em 0 0;
+            background: var(--gray-bg);
+            vertical-align: middle;
+        }
+        .is-idle {background: #c1c1c1;}
+        .is-processing {background: var(--primary);}
+        .is-bypass {background: #eab308;}
+        .is-blocked {background: var(--danger);}
+        .is-completed {background: var(--accent);}
+        .is-error {background: var(--danger);}
+        .data-grid-wrap {
+            margin: 3em 0 1em 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 6px #2221;
+        }
+        th, td {
+            border: 1px solid #eaeaea;
+            padding: 0.9em 0.7em;
+            text-align: left;
+            font-size: 0.99em;
+        }
+        th {
+            background: #fafafa;
+            color: #333;
+        }
+        tbody tr:nth-child(odd) {background: #f8f7fc;}
+        .img-list a {
+            margin-right: 4px;
+            background: #eee;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.87em;
+        }
+        @media (max-width: 900px) {
+            .stat-cards { flex-direction: column; gap: 0.8em; }
+            .main-container { padding: 1.3rem; }
+        }
+        @media (max-width: 600px) {
+            .header, .main-container { padding-left: 0.6em; padding-right: 0.6em; }
+        }
+        .progress-bar-wrap { margin: 0.7em 0; height: 13px; background: #e8ecfa; border-radius: 5px; overflow: hidden;}
+        .progress-bar { height: 100%; background: var(--primary);}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Shein Product Scraper Dashboard</h1>
+        <div class="stat-cards" id="dashboard-cards">
+            <!-- Cards updated via JS -->
+            <div class="card">
+                <span class="card-main" id="scraped-products-count">0</span>
+                <div class="card-label">Products Scraped</div>
+            </div>
+            <div class="card">
+                <span class="card-main" id="product-links-count">0</span>
+                <div class="card-label">Links Found</div>
+            </div>
+            <div class="card">
+                <span class="card-main" id="current-category">-</span>
+                <div class="card-label">Current Category</div>
+            </div>
+            <div class="card">
+                <span class="card-main status-indicator is-idle" id="status-indicator"></span>
+                <div class="card-label" id="scraper-status-text">Status</div>
+            </div>
+        </div>
+    </div>
+    <div class="main-container">
+        <div class="input-section">
+            <label for="cat-urls">Input Shein Category URLs:</label><br>
+            <textarea id="cat-urls" rows="3" placeholder="Paste one Shein category URL per line"></textarea>
+            <div class="actions">
+                <button id="scrape-btn">Start Scraping</button>
+                <a class="export-btn" href="/export" target="_blank">Export CSV</a>
+                <button id="refresh-btn" type="button">Refresh Table</button>
+            </div>
+        </div>
+        <div class="status-wrap">
+            <span class="status-label">Progress:</span>
+            <span id="progress-prod">0</span>/<span id="progress-total">0</span>
+            <div class="progress-bar-wrap">
+                <div class="progress-bar" id="progress-bar" style="width:0%;"></div>
+            </div>
+            <span class="status-label">Last Message:</span>
+            <span id="scraper-message">Idle</span>
+        </div>
+        <div class="data-grid-wrap">
+            <h2 style="margin-bottom:0.5em;">Scraped Products</h2>
+            <div id="data-view"></div>
+        </div>
+    </div>
+    <footer style="margin:3em 0 1em 0; text-align:center; font-size:0.95em; color:#888;">
+        &copy; 2024 Shein Advanced Scraper Dashboard &ndash; Modern UI Example
+    </footer>
+    <script>
+        // Update stat cards and UI from status
+        function updateDashboard(status) {
+            document.getElementById('scraped-products-count').textContent = status.products_scraped;
+            document.getElementById('product-links-count').textContent = status.product_links_found;
+            document.getElementById('current-category').textContent = status.current_category || "-";
+            document.getElementById('progress-prod').textContent = status.products_scraped;
+            document.getElementById('progress-total').textContent = status.product_links_found;
+
+            // update status indicator and text
+            var el = document.getElementById('status-indicator');
+            el.className = 'card-main status-indicator';
+            var statusMap = {
+                "Idle": "is-idle",
+                "Processing": "is-processing",
+                "Attempting Bypass": "is-bypass",
+                "Blocked": "is-blocked",
+                "Completed": "is-completed",
+                "Error": "is-error"
+            };
+            var state = status.status;
+            if (statusMap[state]) el.classList.add(statusMap[state]);
+            document.getElementById('scraper-status-text').textContent = state;
+
+            // update progress bar
+            let perc = (status.product_links_found > 0)
+                ? Math.round(100.0 * status.products_scraped/status.product_links_found)
+                : 0;
+            document.getElementById('progress-bar').style.width = perc + "%";
+
+            document.getElementById('scraper-message').textContent = status.message || "";
+        }
+
+        function fetchStatus() {
+            fetch('/status').then(r=>r.json()).then(d=>{
+                updateDashboard(d);
+                if(d.status == "Processing" || d.status == "Attempting Bypass") setTimeout(fetchStatus, 3000);
+            });
+        }
+
+        function startScraping(){
+            let urls = document.getElementById('cat-urls').value.split('\n');
+            fetch('/scrape', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({category_urls: urls})
+            }).then(r=>r.json()).then(d=>{
+                fetchStatus();
+                setTimeout(loadTable, 3000);
+            });
+        }
+
+        function loadTable() {
+            fetch('/data').then(r=>r.json()).then(rows=>{
+                let html = '<table><thead><tr><th>Title</th><th>Price</th><th>Colors</th><th>Sizes</th><th>Description</th><th>Images</th><th>Link</th></tr></thead><tbody>';
+                for(let row of rows){
+                    html += '<tr>'
+                        + `<td>${row.title}</td>`
+                        + `<td>${row.price}</td>`
+                        + `<td>${Array.isArray(row.color) ? row.color.join(", ") : row.color}</td>`
+                        + `<td>${Array.isArray(row.size) ? row.size.join(", ") : row.size}</td>`
+                        + `<td style="max-width:250px">${Array.isArray(row.description) ? row.description.map(x => x.key + ": " + x.value).join("<br>") : row.description}</td>`
+                        + `<td class="img-list">${(row.images || '').split(',').map(u=>"<a href='"+u+"' target='_blank'>img</a>").join(' ')}</td>`
+                        + `<td><a href="${row.product_url}" target="_blank">Link</a></td>`
+                        + '</tr>';
+                }
+                html += "</tbody></table>";
+                document.getElementById('data-view').innerHTML = html;
+            });
+        }
+
+        document.getElementById('scrape-btn').onclick = startScraping;
+        document.getElementById('refresh-btn').onclick = loadTable;
+        window.onload = function() {
+            fetchStatus();
+            loadTable();
+        };
+    </script>
+</body>
+</html>
